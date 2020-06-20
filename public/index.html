@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Ingester</title>
+  </head>
+
+  <body>
+    <h1>File Ingester</h1>
+
+    <main>
+      <input type="file" id="input">
+    </main>
+  </body>
+
+  <script>
+    const inputElement = document.getElementById("input");
+    inputElement.addEventListener("change", handleFiles, false);
+    async function handleFiles() {
+      const file = this.files[0]; /* now you can work with the file list */
+      console.log(file);
+
+      const formData = new FormData()
+      formData.append('csv', file)
+
+      try {
+        const data = await fetch('/', {
+          method: 'POST',
+          body: formData
+        })
+        .then(response => response.json())
+      } catch (err) {
+        console.log(err);
+      }
+
+    }
+  </script>
+</html>
