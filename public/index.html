@@ -11,34 +11,31 @@
     <h1>File Ingester</h1>
 
     <main>
-      <input type="file" id="input">
+      <form id="file-upload-form">
+        <input type="file" id="input" name="file">
+        <button type="submit">Upload</button>
+      </form>
     </main>
   </body>
 
   <script>
-    const inputElement = document.getElementById("input");
-    inputElement.addEventListener("change", handleFiles, false);
-    async function handleFiles() {
-      const file = this.files[0]; /* now you can work with the file list */
+    const formElement = document.querySelector('#file-upload-form')
+    formElement.addEventListener("submit", onSubmit);
+
+    async function onSubmit(event) {
+      event.preventDefault()
+
+      const inputElement = document.getElementById("input");
+      const file = inputElement.files[0]; /* now you can work with the file list */
 
       const formData = new FormData()
       formData.append('csv', file)
 
       try {
-        const results = await Promise.all([
-          fetch('/', {
-            method: 'POST',
-            body: formData
-          }).then(res => res.json()),
-          fetch('/', {
-            method: 'POST',
-            body: formData
-          }).then(res => res.json()),
-          fetch('/', {
-            method: 'POST',
-            body: formData
-          }).then(res => res.json())
-        ])
+        const results = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData
+        }).then(res => res.json())
 
         console.log(results);
       } catch (err) {
@@ -47,4 +44,5 @@
 
     }
   </script>
+
 </html>
