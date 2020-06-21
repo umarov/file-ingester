@@ -20,17 +20,27 @@
     inputElement.addEventListener("change", handleFiles, false);
     async function handleFiles() {
       const file = this.files[0]; /* now you can work with the file list */
-      console.log(file);
 
       const formData = new FormData()
       formData.append('csv', file)
 
       try {
-        const data = await fetch('/', {
-          method: 'POST',
-          body: formData
-        })
-        .then(response => response.json())
+        const results = await Promise.all([
+          fetch('/', {
+            method: 'POST',
+            body: formData
+          }).then(res => res.json()),
+          fetch('/', {
+            method: 'POST',
+            body: formData
+          }).then(res => res.json()),
+          fetch('/', {
+            method: 'POST',
+            body: formData
+          }).then(res => res.json())
+        ])
+
+        console.log(results);
       } catch (err) {
         console.log(err);
       }

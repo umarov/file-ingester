@@ -3,7 +3,6 @@ import {
   FastifyAdapter,
   NestFastifyApplication
 } from '@nestjs/platform-fastify';
-import { join } from 'path';
 import * as multiPart from 'fastify-multipart';
 
 import { AppModule } from './app.module';
@@ -15,11 +14,6 @@ async function bootstrap() {
   );
 
   app.register(multiPart);
-
-  app.useStaticAssets({
-    root: join(__dirname, '..', 'public'),
-    prefix: '/public/'
-  });
 
   await app.listen(parseInt(process.env.PORT || '3000'), '0.0.0.0');
 }
