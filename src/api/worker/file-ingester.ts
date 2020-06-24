@@ -1,8 +1,8 @@
 import { Worker, isMainThread, parentPort, workerData, MessageChannel } from 'worker_threads';
 import * as parse from 'csv-parse';
 import fetch from 'node-fetch'
-import { Observable, Subject, of, empty } from 'rxjs';
-import { bufferCount, mergeMap, throttle, takeUntil, bufferTime } from 'rxjs/operators'
+import { Observable, Subject, of, from } from 'rxjs';
+import { bufferCount, mergeMap, throttle, takeUntil, bufferTime, delayWhen, flatMap, delay, windowCount, mergeAll, map } from 'rxjs/operators'
 
 const headerMap = {
   ['Vendor Name']: 'vendor_name',
@@ -32,12 +32,16 @@ const sendRequest = (record) => {
     .catch(console.log);
 }
 
+interface CsvData {
+  vendor_name: string
+}
+
 export function parseCsv(csvFile: Buffer): Promise<string[]> {
   if (isMainThread) {
     const unsub$ = new Subject()
     return new Promise((resolve, reject) => {
 
-      const observable = new Observable((subscriber) => {
+      const observable = new Observable<CsvData[]>((subscriber) => {
         const worker = new Worker(__filename, {
           workerData: csvFile.toString('utf8')
         });
@@ -50,20 +54,32 @@ export function parseCsv(csvFile: Buffer): Promise<string[]> {
         worker.on('exit', (code) => {
           if (code !== 0)
             subscriber.error(new Error(`Worker stopped with exit code ${code}`));
+
+          subscriber.complete()
         });
       })
-
+      let num = 0;
       observable.pipe(
         takeUntil(unsub$),
-        bufferTime(1000, null),
+        windowCount(10),
+        mergeAll(),
         bufferCount(10),
-        mergeMap((records) => {
-          return Promise.all(records.map(sendRequest))
-        }),
-        bufferCount(10),
-        mergeMap(records => {
-          return records.length > 0 ? of(records) : empty();
+        flatMap(async (records) => {
+          // return Promise.all(records.map(sendRequest))
+          console.log('Group: ', ++num);
+          return await Promise.all(records.map(sendRequest))
+          // console.log(records);
+          // return from(Promise.all(
+          //   records.map(r => {
+          //     return new Promise((resolve) => {
+          //       setTimeout(() => resolve(r), 5000)
+          //     })
+          //   })
+          // ))
         })
+        // delayWhen((value, index) => {
+        //   return of(value)
+        // })
       ).subscribe({
         complete: () => {
           console.log('completed')
@@ -95,18 +111,16 @@ if (!isMainThread) {
         escape: '"',
         skip_empty_lines: true,
         columns: header => header.map(column => headerMap[column])
-      },
-      (err, records) => {
-        if (err) {
-          console.log(err);
-          throw err;
-        }
-
-        records.map(record => {
-          parentPort.postMessage(record)
-        })
       }
-    );
+    ).on('readable', function () {
+      let record
+      while (record = this.read()) {
+          parentPort.postMessage(record)
+      }
+    }).on('error', (err) => {
+      console.log(err);
+      throw err;
+    });
   } catch (err) {
     console.log(err);
   }
