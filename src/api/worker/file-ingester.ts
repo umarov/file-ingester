@@ -1,7 +1,7 @@
 import { Worker, isMainThread, parentPort, workerData, MessageChannel } from 'worker_threads';
 import * as parse from 'csv-parse';
 import fetch from 'node-fetch'
-import { Observable, Subject, of, from } from 'rxjs';
+import { Observable, Subject, of, from, interval } from 'rxjs';
 import { bufferCount, mergeMap, throttle, takeUntil, bufferTime, delayWhen, flatMap, delay, windowCount, mergeAll, map } from 'rxjs/operators'
 
 const headerMap = {
@@ -36,65 +36,58 @@ interface CsvData {
   vendor_name: string
 }
 
+function createWorkerObservable(csvFile: Buffer) {
+  return new Observable<CsvData[]>((subscriber) => {
+    const worker = new Worker(__filename, {
+      workerData: csvFile.toString('utf8')
+    });
+
+    worker.on('message', (record) => {
+      subscriber.next(record)
+    });
+
+    worker.on('error', subscriber.error);
+    worker.on('exit', (code) => {
+      if (code !== 0)
+        subscriber.error(new Error(`Worker stopped with exit code ${code}`));
+
+      subscriber.complete()
+    });
+  })
+}
+
+function startProcessing(csvFile, resolve, reject) {
+  const unsub$ = new Subject()
+  const observable = createWorkerObservable(csvFile)
+  observable.pipe(
+    takeUntil(unsub$),
+    bufferCount(10),
+    delayWhen(() => interval(1000))
+  ).subscribe({
+    next: (records) => {
+      console.log(records.length);
+    },
+    complete: () => {
+      console.log('completed')
+      unsub$.next()
+      unsub$.complete()
+
+      resolve()
+    },
+    error: (err) => {
+      console.log(err)
+      reject(err)
+      unsub$.next()
+      unsub$.complete()
+    }
+  })
+}
+
 export function parseCsv(csvFile: Buffer): Promise<string[]> {
   if (isMainThread) {
-    const unsub$ = new Subject()
     return new Promise((resolve, reject) => {
+      startProcessing(csvFile, resolve, reject)
 
-      const observable = new Observable<CsvData[]>((subscriber) => {
-        const worker = new Worker(__filename, {
-          workerData: csvFile.toString('utf8')
-        });
-
-        worker.on('message', (record) => {
-          subscriber.next(record)
-        });
-
-        worker.on('error', subscriber.error);
-        worker.on('exit', (code) => {
-          if (code !== 0)
-            subscriber.error(new Error(`Worker stopped with exit code ${code}`));
-
-          subscriber.complete()
-        });
-      })
-      let num = 0;
-      observable.pipe(
-        takeUntil(unsub$),
-        windowCount(10),
-        mergeAll(),
-        bufferCount(10),
-        flatMap(async (records) => {
-          // return Promise.all(records.map(sendRequest))
-          console.log('Group: ', ++num);
-          return await Promise.all(records.map(sendRequest))
-          // console.log(records);
-          // return from(Promise.all(
-          //   records.map(r => {
-          //     return new Promise((resolve) => {
-          //       setTimeout(() => resolve(r), 5000)
-          //     })
-          //   })
-          // ))
-        })
-        // delayWhen((value, index) => {
-        //   return of(value)
-        // })
-      ).subscribe({
-        complete: () => {
-          console.log('completed')
-          unsub$.next()
-          unsub$.complete()
-
-          resolve()
-        },
-        error: (err) => {
-          console.log(err)
-          reject(err)
-          unsub$.next()
-          unsub$.complete()
-        }
-      })
 
     });
   }
@@ -115,7 +108,7 @@ if (!isMainThread) {
     ).on('readable', function () {
       let record
       while (record = this.read()) {
-          parentPort.postMessage(record)
+        parentPort.postMessage(record)
       }
     }).on('error', (err) => {
       console.log(err);
